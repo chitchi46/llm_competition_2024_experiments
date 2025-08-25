@@ -1,0 +1,11 @@
+torch>=2.3.0
+transformers>=4.43.0
+accelerate>=0.33.0
+bitsandbytes>=0.43.1; platform_system != 'Windows'
+sentencepiece>=0.2.0
+protobuf>=4.25.3
+uvicorn>=0.30.0
+fastapi>=0.111.0
+tqdm>=4.66.0
+python-dotenv>=1.0.1
+

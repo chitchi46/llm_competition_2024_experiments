@@ -1,0 +1,124 @@
+## LLM講義2024 最終課題 ― LLM開発コンペティション
+
+本リポジトリは、松尾・岩澤研究室「大規模言語モデル講座 2024」における最終課題（LLM開発コンペティション）の成果物を管理します。以下に、コンペの目的・評価・ルール・提出物（JSON Lines 形式の例を含む）を整理します。
+
+### 目次
+- 1. コンペの目的・概要  
+- 2. コンペの評価と修了要件  
+- 3. ルール  
+- 4. 提出物  
+
+---
+
+## 1. コンペの目的・概要
+
+- **目的**:  
+  ELYZA-tasks-100 の改変版 **ELYZA-tasks-100-TV** で高スコアを目指す。3週間でモデルを開発し、
+  - **予選**: 自動採点によるスコア競争
+  - **決勝**: 受講生による人手評価
+  の2段階で競う。
+
+- **ベンチマーク**:  
+  - **ELYZA-tasks-100**: 日本語の複雑な指示・タスクを含むベンチマーク。5段階評価。  
+  - **ELYZA-tasks-100-TV**: 上記を改変し、2024年9月以降のテレビ番組内容をタスクに反映。時事性を付与し難易度を上げたもの。
+
+---
+
+## 2. コンペの評価と修了要件
+
+### 評価方法（3つ）
+1. **予選**: ELYZA-tasks-100-TV に対する出力を自動採点  
+   - Gemini 1.5 による暫定スコア → リーダーボード反映  
+   - 上位30名が決勝進出
+
+2. **決勝**: ELYZA-tasks-100-TV に対する出力を人手評価  
+   - 予選通過モデル30個を使用  
+   - 受講生全員がWebフォームで評価
+
+3. **記事投稿**:  
+   - Slack専用チャンネルに投稿  
+   - 他者への助言・自身の工夫を共有  
+   - 上位5投稿をコントリビューション賞として表彰
+
+---
+
+## 3. ルール
+
+### 受講生が行ってよいこと
+- 指定モデルを用いた SFT / RLHF / DPO
+- モデルの蒸留やマージ、MoE作成
+- 合成データ生成（ライセンス要確認）
+- Pythonライブラリを用いたRAG構築（ただし最終出力はLLMである必要あり）
+
+### モデルの制約
+- 使用可能モデル（例）:
+  - LLM-jp-3 系列
+  - google/gemma-2-2b, gemma-2-9b, gemma-2-27b (+ pytorch 版)
+- GPU要件: **24GB (L4想定)**, CPUメモリ 48GB
+- 1時間以内にタスク全体を出力可能であること
+
+### 受講生が行ってはいけないこと
+- 推論時の外部サービス利用（開発時は可）
+- 開発で ELYZA-tasks-100-TV の使用
+- 未改変モデルによる出力提出
+- 指定外のLLM利用
+- ライセンス違反
+- 予選リーダーボードを用いたチューニング
+
+---
+
+## 4. 提出物
+
+### 必須提出（全員）
+1. タスク出力 (JSON Lines 形式)  
+2. Hugging Face にアップロードしたモデルのURL (public必須)  
+3. README (出力方法を記載し、モデルと共にHugging Faceにアップロード)
+
+#### JSON Lines の例（形式の説明のみ。具体的なコードやコマンドは別ドキュメント参照）
+各行に `{"task_id": <int>, "input": <str>, "output": <str>}` のレコードを記載します。
+
+---
+
+## 利用手順・コード類
+利用方法、セットアップ、コマンド、入出力サンプルは `USAGE.md` に分離しました。
+
+- 利用ガイド: `USAGE.md`
+
+
+---
+
+## クイックスタート
+
+### 1) セットアップ
+- Python 3.10+ を推奨
+- 仮想環境を作成して依存関係をインストール
+```bash
+python -m venv .venv
+source .venv/bin/activate  # Windows: .venv\Scripts\activate
+pip install -r requirements.txt
+```
+
+環境変数を設定（`env.example` を `.env` にコピーして編集）
+```bash
+cp env.example .env
+```
+
+### 2) サンプル推論の実行
+```bash
+bash scripts/run_infer.sh
+```
+Windows PowerShell の場合:
+```powershell
+./scripts/run_infer.ps1
+```
+
+出力は `outputs/sample_outputs.jsonl` に保存されます。
+
+### 3) 任意のJSONLに対して実行
+```bash
+python -m src.infer -i data/sample_inputs.jsonl -o outputs/out.jsonl -m google/gemma-2-9b-it
+```
+
+本リポジトリ: [GitHub リポジトリ](https://github.com/chitchi46/llm_competition_2024_experiments)
+
+

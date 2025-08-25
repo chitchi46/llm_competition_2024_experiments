@@ -1,0 +1,12 @@
+# すべてLFで統一
+* text=auto eol=lf
+
+# 念のため主要拡張子も明示
+*.sh text eol=lf
+*.ps1 text eol=lf
+*.py text eol=lf
+*.md text eol=lf
+*.jsonl text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+

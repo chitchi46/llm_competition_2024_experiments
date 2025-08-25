@@ -1,0 +1,23 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+
+# Envs
+.env
+.venv/
+venv/
+
+# Data/Outputs
+outputs/
+data/*.jsonl
+!data/sample_inputs.jsonl
+
+# System/Editors
+.DS_Store
+*.swp
+*.swo
+.idea/
+.vscode/
+
