@@ -14,6 +14,13 @@ outputs/
 data/*.jsonl
 !data/sample_inputs.jsonl
 
+# Node / Frontend
+node_modules/
+**/node_modules/
+frontend/dist/
+frontend/*.log
+*.log
+
 # System/Editors
 .DS_Store
 *.swp
