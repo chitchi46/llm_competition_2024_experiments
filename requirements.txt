@@ -8,4 +8,8 @@ uvicorn>=0.30.0
 fastapi>=0.111.0
 tqdm>=4.66.0
 python-dotenv>=1.0.1
+datasets>=2.20.0
+peft>=0.11.1
+huggingface_hub>=0.24.5
+wandb>=0.17.0
 
