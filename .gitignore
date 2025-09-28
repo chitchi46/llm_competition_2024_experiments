@@ -11,6 +11,7 @@ venv/
 
 # Data/Outputs
 outputs/
+uploads/
 data/*.jsonl
 !data/sample_inputs.jsonl
 

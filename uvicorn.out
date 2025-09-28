@@ -1,0 +1,259 @@
+INFO:     Will watch for changes in these directories: ['/home/uka_agai/llm_competition_2024_experiments']
+INFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)
+INFO:     Started reloader process [2863] using StatReload
+INFO:     Started server process [2865]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     127.0.0.1:40732 - "GET /ui HTTP/1.1" 200 OK
+INFO:     127.0.0.1:40732 - "GET /favicon.ico HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:54266 - "GET / HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54266 - "GET /ui HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54280 - "GET /ui HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50558 - "GET /ui HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50558 - "GET /ui HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50558 - "GET /ui HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49256 - "GET /api/outputs HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49256 - "GET /api/outputs HTTP/1.1" 200 OK
+INFO:     127.0.0.1:46444 - "GET /api/outputs HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50504 - "GET /api/outputs HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50504 - "GET /api/outputs HTTP/1.1" 200 OK
+INFO:     127.0.0.1:45866 - "GET /api/outputs HTTP/1.1" 200 OK
+INFO:     127.0.0.1:45866 - "GET /api/outputs HTTP/1.1" 200 OK
+WARNING:  StatReload detected changes in 'src/app.py'. Reloading...
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [2865]
+INFO:     Started server process [4417]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     127.0.0.1:46972 - "GET /api/outputs HTTP/1.1" 200 OK
+WARNING:  StatReload detected changes in 'src/app.py'. Reloading...
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [4417]
+INFO:     Started server process [4525]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     127.0.0.1:46862 - "GET /api/outputs HTTP/1.1" 200 OK
+WARNING:  StatReload detected changes in 'src/app.py'. Reloading...
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [4525]
+INFO:     Started server process [4577]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     127.0.0.1:51794 - "GET /api/outputs HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51794 - "GET /api/outputs HTTP/1.1" 200 OK
+WARNING:  StatReload detected changes in 'src/app.py'. Reloading...
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [4577]
+INFO:     Started server process [4928]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+WARNING:  StatReload detected changes in 'src/app.py'. Reloading...
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [4928]
+INFO:     Started server process [5012]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     127.0.0.1:34322 - "GET /api/gemini_status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:34332 - "GET /api/outputs HTTP/1.1" 200 OK
+INFO:     127.0.0.1:34322 - "GET /api/gemini_status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:34332 - "GET /api/outputs HTTP/1.1" 200 OK
+INFO:     127.0.0.1:34338 - "GET /api/outputs HTTP/1.1" 200 OK
+INFO:     127.0.0.1:34338 - "GET /api/gemini_status HTTP/1.1" 200 OK
+WARNING:  StatReload detected changes in 'src/app.py'. Reloading...
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [5012]
+INFO:     Started server process [5440]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     127.0.0.1:34178 - "GET /api/outputs HTTP/1.1" 200 OK
+INFO:     127.0.0.1:34194 - "GET /api/gemini_status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:34178 - "GET /api/outputs HTTP/1.1" 200 OK
+INFO:     127.0.0.1:34194 - "GET /api/gemini_status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:34204 - "GET /api/outputs HTTP/1.1" 200 OK
+INFO:     127.0.0.1:34204 - "GET /api/gemini_status HTTP/1.1" 200 OK
+WARNING:  StatReload detected changes in 'src/app.py'. Reloading...
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [5440]
+INFO:     Started server process [5517]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     127.0.0.1:59054 - "GET /api/outputs HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59064 - "GET /api/gemini_status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59054 - "GET /api/outputs HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59064 - "GET /api/gemini_status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59064 - "GET /api/outputs HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59054 - "GET /api/gemini_status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59064 - "GET /api/outputs HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59054 - "GET /api/gemini_status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43032 - "GET /api/outputs HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43048 - "GET /api/gemini_status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43032 - "GET /api/outputs HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43048 - "GET /api/gemini_status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43032 - "GET /api/outputs HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43048 - "GET /api/gemini_status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43032 - "GET /api/outputs HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43048 - "GET /api/gemini_status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:39166 - "GET /api/outputs HTTP/1.1" 200 OK
+INFO:     127.0.0.1:39180 - "GET /api/gemini_status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:42462 - "GET /api/outputs HTTP/1.1" 200 OK
+INFO:     127.0.0.1:42470 - "GET /api/gemini_status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55396 - "GET /api/outputs HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55402 - "GET /api/gemini_status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51686 - "OPTIONS /api/gemini_key HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51686 - "POST /api/gemini_key HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60690 - "GET /api/outputs HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60702 - "GET /api/gemini_status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60690 - "GET /api/outputs HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60702 - "GET /api/gemini_status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:34286 - "GET /api/outputs HTTP/1.1" 200 OK
+INFO:     127.0.0.1:34302 - "GET /api/gemini_status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:46692 - "GET /api/outputs HTTP/1.1" 200 OK
+INFO:     127.0.0.1:46696 - "GET /api/gemini_status HTTP/1.1" 200 OK
+WARNING: All log messages before absl::InitializeLog() is called are written to STDERR
+E0000 00:00:1759078475.898282    5517 alts_credentials.cc:93] ALTS creds ignored. Not running on GCP and untrusted ALTS is not enabled.
+E0000 00:00:1759078488.808181    5517 alts_credentials.cc:93] ALTS creds ignored. Not running on GCP and untrusted ALTS is not enabled.
+E0000 00:00:1759078502.974945    5517 alts_credentials.cc:93] ALTS creds ignored. Not running on GCP and untrusted ALTS is not enabled.
+E0000 00:00:1759078515.948786    5517 alts_credentials.cc:93] ALTS creds ignored. Not running on GCP and untrusted ALTS is not enabled.
+E0000 00:00:1759078531.263899    5517 alts_credentials.cc:93] ALTS creds ignored. Not running on GCP and untrusted ALTS is not enabled.
+INFO:     127.0.0.1:37028 - "POST /api/eval_upload HTTP/1.1" 500 Internal Server Error
+WARNING:  StatReload detected changes in 'src/utils/jsonl_io.py'. Reloading...
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [5517]
+INFO:     Started server process [6323]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+WARNING:  StatReload detected changes in 'src/app.py'. Reloading...
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [6323]
+INFO:     Started server process [6336]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+WARNING:  StatReload detected changes in 'src/app.py'. Reloading...
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [6336]
+INFO:     Started server process [6419]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+WARNING:  StatReload detected changes in 'src/app.py'. Reloading...
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [6419]
+INFO:     Started server process [6451]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     127.0.0.1:51922 - "GET /api/outputs HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51924 - "GET /api/gemini_status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51928 - "GET /api/outputs HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51938 - "GET /api/outputs HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51948 - "GET /api/gemini_status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51938 - "GET /api/outputs HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51948 - "GET /api/gemini_status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:34236 - "OPTIONS /api/gemini_key HTTP/1.1" 200 OK
+INFO:     127.0.0.1:34236 - "POST /api/gemini_key HTTP/1.1" 200 OK
+WARNING: All log messages before absl::InitializeLog() is called are written to STDERR
+E0000 00:00:1759078963.607339    6451 alts_credentials.cc:93] ALTS creds ignored. Not running on GCP and untrusted ALTS is not enabled.
+E0000 00:00:1759078977.465197    6451 alts_credentials.cc:93] ALTS creds ignored. Not running on GCP and untrusted ALTS is not enabled.
+E0000 00:00:1759078990.222134    6451 alts_credentials.cc:93] ALTS creds ignored. Not running on GCP and untrusted ALTS is not enabled.
+E0000 00:00:1759079004.873635    6451 alts_credentials.cc:93] ALTS creds ignored. Not running on GCP and untrusted ALTS is not enabled.
+E0000 00:00:1759079023.304794    6451 alts_credentials.cc:93] ALTS creds ignored. Not running on GCP and untrusted ALTS is not enabled.
+INFO:     127.0.0.1:47426 - "POST /api/eval_upload HTTP/1.1" 500 Internal Server Error
+WARNING:  StatReload detected changes in 'src/app.py'. Reloading...
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [6451]
+INFO:     Started server process [6678]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+WARNING:  StatReload detected changes in 'src/app.py'. Reloading...
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [6678]
+INFO:     Started server process [6704]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+WARNING:  StatReload detected changes in 'src/app.py'. Reloading...
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [6704]
+INFO:     Started server process [6718]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     127.0.0.1:58034 - "GET /api/outputs HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58046 - "GET /api/gemini_status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58034 - "GET /api/outputs HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58046 - "GET /api/gemini_status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56926 - "OPTIONS /api/gemini_key HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56926 - "POST /api/gemini_key HTTP/1.1" 200 OK
+WARNING: All log messages before absl::InitializeLog() is called are written to STDERR
+E0000 00:00:1759079575.917338    6718 alts_credentials.cc:93] ALTS creds ignored. Not running on GCP and untrusted ALTS is not enabled.
+E0000 00:00:1759079587.478262    6718 alts_credentials.cc:93] ALTS creds ignored. Not running on GCP and untrusted ALTS is not enabled.
+E0000 00:00:1759079600.634597    6718 alts_credentials.cc:93] ALTS creds ignored. Not running on GCP and untrusted ALTS is not enabled.
+E0000 00:00:1759079615.014298    6718 alts_credentials.cc:93] ALTS creds ignored. Not running on GCP and untrusted ALTS is not enabled.
+E0000 00:00:1759079633.824954    6718 alts_credentials.cc:93] ALTS creds ignored. Not running on GCP and untrusted ALTS is not enabled.
+INFO:     127.0.0.1:56940 - "POST /api/eval_upload HTTP/1.1" 500 Internal Server Error
+WARNING:  StatReload detected changes in 'src/app.py'. Reloading...
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [6718]
+INFO:     Started server process [6924]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+WARNING:  StatReload detected changes in 'src/app.py'. Reloading...
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [6924]
+INFO:     Started server process [6938]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+WARNING:  StatReload detected changes in 'src/app.py'. Reloading...
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [6938]
+INFO:     Started server process [7007]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     127.0.0.1:49250 - "GET /api/outputs HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49266 - "GET /api/gemini_status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49250 - "GET /api/outputs HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49266 - "GET /api/gemini_status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49266 - "OPTIONS /api/gemini_key HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49250 - "POST /api/gemini_key HTTP/1.1" 200 OK
+WARNING: All log messages before absl::InitializeLog() is called are written to STDERR
+E0000 00:00:1759080429.978401    7007 alts_credentials.cc:93] ALTS creds ignored. Not running on GCP and untrusted ALTS is not enabled.
+E0000 00:00:1759080456.515683    7007 alts_credentials.cc:93] ALTS creds ignored. Not running on GCP and untrusted ALTS is not enabled.
+E0000 00:00:1759080471.356751    7007 alts_credentials.cc:93] ALTS creds ignored. Not running on GCP and untrusted ALTS is not enabled.
+E0000 00:00:1759080483.613350    7007 alts_credentials.cc:93] ALTS creds ignored. Not running on GCP and untrusted ALTS is not enabled.
+E0000 00:00:1759080503.559155    7007 alts_credentials.cc:93] ALTS creds ignored. Not running on GCP and untrusted ALTS is not enabled.
+INFO:     127.0.0.1:49272 - "POST /api/eval_upload HTTP/1.1" 500 Internal Server Error
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [7007]
+INFO:     Stopping reloader process [2863]

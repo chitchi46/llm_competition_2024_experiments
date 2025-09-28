@@ -7,6 +7,9 @@ def read_jsonl(file_path: str) -> List[Dict]:
     with open(file_path, "r", encoding="utf-8") as f:
         for line in f:
             line = line.strip()
+            # Remove UTF-8 BOM if present
+            if line.startswith("\ufeff"):
+                line = line.lstrip("\ufeff")
             if not line:
                 continue
             records.append(json.loads(line))
@@ -17,6 +20,9 @@ def iter_jsonl(file_path: str) -> Iterator[Dict]:
     with open(file_path, "r", encoding="utf-8") as f:
         for line in f:
             line = line.strip()
+            # Remove UTF-8 BOM if present
+            if line.startswith("\ufeff"):
+                line = line.lstrip("\ufeff")
             if not line:
                 continue
             yield json.loads(line)

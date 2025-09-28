@@ -1,11 +1,15 @@
-from fastapi import FastAPI, Request, Form
+from fastapi import FastAPI, Request, Form, UploadFile, File
 from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pathlib import Path
 import os
 import json
+import time
+from dotenv import load_dotenv
 
 from src.infer import run_inference
+from src.eval_gemini import evaluate_jsonl, load_eval_config_from_env
+from src.utils.jsonl_io import write_jsonl
 
 
 app = FastAPI(title="LLM Experiments Dashboard")
@@ -25,6 +29,11 @@ app.add_middleware(
 BASE_DIR = Path(__file__).resolve().parent.parent
 OUTPUTS_DIR = BASE_DIR / "outputs"
 OUTPUTS_DIR.mkdir(parents=True, exist_ok=True)
+UPLOADS_DIR = BASE_DIR / "uploads"
+UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
+
+# Load .env for API keys (e.g., GEMINI_API_KEY)
+load_dotenv()
 
 
 def render_index(rows):
@@ -280,4 +289,142 @@ async def api_run(req: Request):
         return JSONResponse(status_code=500, content={"error": str(e)})
     return {"status": "started", "output": output_path}
 
+
+# ---- File upload + Gemini evaluation ----
+
+@app.post("/api/eval_upload")
+async def api_eval_upload(file: UploadFile = File(...), max_records: int = 50):
+    # Save upload
+    ts = int(time.time())
+    raw_name = f"{ts}_{file.filename}"
+    saved_path = UPLOADS_DIR / raw_name
+    with open(saved_path, "wb") as f:
+        f.write(await file.read())
+
+    # Normalize to JSONL (.jsonl / .txt / .json)
+    in_jsonl_path = saved_path
+    if saved_path.suffix.lower() in {".txt", ".log"}:
+        # Convert each non-empty line to {task_id, output}
+        jsonl_path = UPLOADS_DIR / f"{saved_path.stem}.jsonl"
+        count = 0
+        with open(saved_path, "r", encoding="utf-8", errors="ignore") as rf:
+            rows = []
+            for i, line in enumerate(rf):
+                text = line.strip()
+                if not text:
+                    continue
+                rows.append({"task_id": i + 1, "input": "", "output": text})
+                count += 1
+        write_jsonl(str(jsonl_path), rows)
+        in_jsonl_path = jsonl_path
+    elif saved_path.suffix.lower() == ".json":
+        # Accept array or object -> jsonl
+        jsonl_path = UPLOADS_DIR / f"{saved_path.stem}.jsonl"
+        try:
+            with open(saved_path, "r", encoding="utf-8") as rf:
+                data = json.load(rf)
+        except Exception as e:
+            return JSONResponse(status_code=400, content={"error": f"invalid json: {e}"})
+        rows: list[dict] = []
+        if isinstance(data, list):
+            for i, obj in enumerate(data):
+                if isinstance(obj, dict):
+                    rows.append(obj)
+                else:
+                    rows.append({"task_id": i + 1, "input": "", "output": str(obj)})
+        elif isinstance(data, dict):
+            rows.append(data)
+        else:
+            rows.append({"task_id": 1, "input": "", "output": str(data)})
+        write_jsonl(str(jsonl_path), rows)
+        in_jsonl_path = jsonl_path
+
+    # If the uploaded file is not .jsonl but looks like a single JSON value (array/object),
+    # convert it to JSONL. For true .jsonl は行区切りのため触らない。
+    try:
+        with open(in_jsonl_path, "r", encoding="utf-8", errors="ignore") as rf:
+            head = rf.read(2048).lstrip("\ufeff\n\r\t ")
+    except Exception:
+        head = ""
+    suffix = Path(in_jsonl_path).suffix.lower()
+    if suffix != ".jsonl" and (head.startswith("[") or head.startswith("{")):
+        try:
+            with open(in_jsonl_path, "r", encoding="utf-8", errors="ignore") as rf:
+                data = json.load(rf)
+            jsonl_path = (UPLOADS_DIR / f"{Path(in_jsonl_path).stem}.normalized.jsonl")
+            rows: list[dict] = []
+            if isinstance(data, list):
+                for i, obj in enumerate(data):
+                    if isinstance(obj, dict):
+                        rows.append(obj)
+                    else:
+                        rows.append({"task_id": i + 1, "input": "", "output": str(obj)})
+            elif isinstance(data, dict):
+                rows.append(data)
+            else:
+                rows.append({"task_id": 1, "input": "", "output": str(data)})
+            write_jsonl(str(jsonl_path), rows)
+            in_jsonl_path = jsonl_path
+        except Exception:
+            # JSON としては読めなかった → JSONL として扱う
+            pass
+
+    # Run Gemini evaluation
+    out_path = OUTPUTS_DIR / f"gemini_eval_{ts}.jsonl"
+    try:
+        cfg = load_eval_config_from_env()
+        evaluate_jsonl(
+            input_jsonl=str(in_jsonl_path),
+            output_jsonl=str(out_path),
+            cfg=cfg,
+            max_records=max_records or None,
+        )
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"error": str(e)})
+
+    # Summarize result (avg score and count)
+    num = 0
+    total = 0.0
+    head: list[dict] = []
+    try:
+        with open(out_path, "r", encoding="utf-8") as rf:
+            for i, line in enumerate(rf):
+                obj = json.loads(line)
+                num += 1
+                try:
+                    total += float(obj.get("score", 0))
+                except Exception:
+                    pass
+                if i < 5:
+                    head.append(obj)
+    except Exception:
+        pass
+
+    avg = (total / num) if num else 0.0
+    return {"status": "ok", "output": str(out_path.relative_to(BASE_DIR)), "count": num, "avg_score": avg, "head": head}
+
+
+# ---- Gemini status ----
+
+@app.get("/api/gemini_status")
+async def gemini_status():
+    key = os.getenv("GEMINI_API_KEY", "")
+    configured = bool(key)
+    masked = "\u25CF" * 5 if configured else ""
+    model = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
+    return {"configured": configured, "masked": masked, "model": model}
+
+
+@app.post("/api/gemini_key")
+async def set_gemini_key(req: Request):
+    try:
+        body = await req.json()
+    except Exception:
+        body = {}
+    api_key = (body or {}).get("api_key")
+    if not api_key:
+        return JSONResponse(status_code=400, content={"error": "api_key is required"})
+    # Set only in-process; not persisted to disk
+    os.environ["GEMINI_API_KEY"] = str(api_key)
+    return {"status": "ok", "masked": "\u25CF" * 5}
 

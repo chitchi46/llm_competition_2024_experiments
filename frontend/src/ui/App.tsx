@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react'
+import React, { useEffect, useState } from 'react'
 
 const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:8000'
 
@@ -18,6 +18,10 @@ export function App() {
   const [useUnsloth, setUseUnsloth] = useState(false)
   const [maxNewTokens, setMaxNewTokens] = useState(512)
   const [message, setMessage] = useState('')
+  const [geminiMasked, setGeminiMasked] = useState('')
+  const [geminiModel, setGeminiModel] = useState('')
+  const [geminiInput, setGeminiInput] = useState('')
+  const [geminiConfigured, setGeminiConfigured] = useState(false)
 
   const listOutputs = async () => {
     const res = await fetch(`${API_BASE}/api/outputs`)
@@ -27,7 +31,38 @@ export function App() {
 
   useEffect(() => {
     listOutputs()
+    ;(async () => {
+      try {
+        const res = await fetch(`${API_BASE}/api/gemini_status`)
+        const data = await res.json()
+        if (typeof data?.configured === 'boolean') setGeminiConfigured(!!data.configured)
+        if (data?.masked) setGeminiMasked(data.masked)
+        if (data?.model) setGeminiModel(data.model)
+      } catch {}
+    })()
   }, [])
+  const saveGeminiKey = async () => {
+    if (!geminiInput) return
+    setLoading(true)
+    setMessage('')
+    try {
+      const res = await fetch(`${API_BASE}/api/gemini_key`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ api_key: geminiInput })
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data?.error || 'failed')
+      if (data.masked) setGeminiMasked(data.masked)
+      setGeminiConfigured(true)
+      setGeminiInput('')
+      setMessage('Gemini API Key を設定しました。')
+    } catch (e: any) {
+      setMessage(`error: ${String(e.message || e)}`)
+    } finally {
+      setLoading(false)
+    }
+  }
 
   const onRun = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -50,63 +85,82 @@ export function App() {
     }
   }
 
+  const onUpload: React.ChangeEventHandler<HTMLInputElement> = async (e) => {
+    const f = e.target.files?.[0]
+    if (!f) return
+    setMessage('')
+    setLoading(true)
+    try {
+      const fd = new FormData()
+      fd.append('file', f)
+      const res = await fetch(`${API_BASE}/api/eval_upload`, {
+        method: 'POST',
+        body: fd,
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data?.error || 'upload failed')
+      setMessage(`Gemini評価 完了: avg=${(data.avg_score ?? 0).toFixed(2)} count=${data.count}. 出力: ${data.output}`)
+      await listOutputs()
+    } catch (err: any) {
+      setMessage(`error: ${String(err.message || err)}`)
+    } finally {
+      setLoading(false)
+      e.currentTarget.value = ''
+    }
+  }
+
   return (
-    <div style={{ fontFamily: 'system-ui, sans-serif', padding: 16, maxWidth: 1200, margin: '0 auto' }}>
-      <h1>LLM Experiments Dashboard (TS)</h1>
+    <div className="container">
+      <h1 className="page-title">LLM コンペ評価ダッシュボード</h1>
 
-      <form onSubmit={onRun} style={{ border: '1px solid #ddd', padding: 12, borderRadius: 8, marginBottom: 16 }}>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-          <label>
-            <div>Model ID</div>
-            <input value={modelId} onChange={e => setModelId(e.target.value)} style={{ width: '100%' }} />
-          </label>
-          <label>
-            <div>Adapter ID (LoRA)</div>
-            <input value={adapterId} onChange={e => setAdapterId(e.target.value)} style={{ width: '100%' }} />
-          </label>
-          <label>
-            <div>Input JSONL</div>
-            <input value={inputPath} onChange={e => setInputPath(e.target.value)} style={{ width: '100%' }} />
-          </label>
-          <label>
-            <div>Output JSONL</div>
-            <input value={outputPath} onChange={e => setOutputPath(e.target.value)} style={{ width: '100%' }} />
-          </label>
-          <label>
-            <div>Use Unsloth</div>
-            <select value={useUnsloth ? 'true' : 'false'} onChange={e => setUseUnsloth(e.target.value === 'true')}>
-              <option value='false'>false</option>
-              <option value='true'>true</option>
-            </select>
-          </label>
-          <label>
-            <div>Max New Tokens</div>
-            <input type='number' value={maxNewTokens} onChange={e => setMaxNewTokens(parseInt(e.target.value || '0', 10) || 0)} />
-          </label>
-        </div>
-        <div style={{ marginTop: 12 }}>
-          <button type='submit' disabled={loading}>{loading ? 'Running...' : 'Run'}</button>
-          <span style={{ marginLeft: 8, color: '#666' }}>Backend: {API_BASE}</span>
-        </div>
-        {message && <div style={{ marginTop: 8 }}>{message}</div>}
-      </form>
+      <div className="card" style={{ marginBottom: 16 }}>
+        <h3 style={{ marginTop: 0 }}>このページはコンペの評価用です</h3>
+        <ul style={{ margin: '8px 0 0 18px' }}>
+          <li>上で Gemini API Key を入力し「保存」できます（表示は <b>{'{'}geminiConfigured ? '入力済' : '未入力'{'}'}</b>）。</li>
+          <li><code>.jsonl</code> / <code>.txt</code> をアップロードすると、Gemini が自動採点し平均スコアと出力パスを表示します。</li>
+          <li>下の Outputs から生成された <code>outputs/*.jsonl</code> を開いて内容を確認できます。</li>
+        </ul>
+      </div>
 
-      <div style={{ border: '1px solid #ddd', padding: 12, borderRadius: 8 }}>
-        <h3>Outputs</h3>
-        <table style={{ borderCollapse: 'collapse', width: '100%' }}>
+      {/* 推論フォームは非表示（評価のみ運用） */}
+      {/* <form onSubmit={onRun} className="card"> ... </form> */}
+
+      <div className="card" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
+        <div>
+          <div className="muted">Gemini API</div>
+          <div>API Key: {geminiConfigured ? '入力済' : '未入力'} {geminiModel && <span className="muted">({geminiModel})</span>}</div>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <input type="password" placeholder="Paste API Key" value={geminiInput} onChange={e => setGeminiInput(e.target.value)} />
+          <button className="btn" onClick={saveGeminiKey} disabled={loading || !geminiInput}>保存</button>
+        </div>
+      </div>
+
+
+      <div className="card" style={{ marginTop: 16 }}>
+        <h3 style={{ marginTop: 0 }}>評価用ファイルをアップロード（.jsonl / .txt）</h3>
+        <p className="muted">.txt の場合は各行を 1 レコードとして評価します（最大50件）。</p>
+        <input type="file" accept=".jsonl,.txt" onChange={onUpload} disabled={loading} />
+      </div>
+
+      {message && <div className="card" style={{ marginTop: 12 }}>{message}</div>}
+
+      <div className="panel card">
+        <h3 style={{ marginTop: 0 }}>Outputs</h3>
+        <table>
           <thead>
             <tr>
-              <th style={{ border: '1px solid #ccc', padding: 6, textAlign: 'left' }}>#</th>
-              <th style={{ border: '1px solid #ccc', padding: 6, textAlign: 'left' }}>path</th>
-              <th style={{ border: '1px solid #ccc', padding: 6, textAlign: 'left' }}>action</th>
+              <th>#</th>
+              <th>path</th>
+              <th>action</th>
             </tr>
           </thead>
           <tbody>
             {items.map((it, i) => (
               <tr key={it.path}>
-                <td style={{ border: '1px solid #ccc', padding: 6 }}>{i + 1}</td>
-                <td style={{ border: '1px solid #ccc', padding: 6 }}>{it.path}</td>
-                <td style={{ border: '1px solid #ccc', padding: 6 }}>
+                <td>{i + 1}</td>
+                <td>{it.path}</td>
+                <td>
                   <a href={`${API_BASE}/api/view?f=${encodeURIComponent(it.path)}`} target="_blank" rel="noreferrer">view</a>
                 </td>
               </tr>

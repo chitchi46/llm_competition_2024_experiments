@@ -126,3 +126,43 @@ python -m src.infer -i data/sample_inputs.jsonl -o outputs/out.jsonl -m google/g
 本リポジトリ: [GitHub リポジトリ](https://github.com/chitchi46/llm_competition_2024_experiments)
 
 
+---
+
+## 評価（Gemini 2.5 Flash）
+
+### 前提
+- `requirements.txt` をインストール済み
+- `GEMINI_API_KEY` を環境変数で設定（`.env` はコミットしない）
+
+### 実行例
+```bash
+# Linux/macOS
+export GEMINI_API_KEY=...  # 実キーを設定
+bash scripts/run_eval_gemini.sh outputs/qwen3_out.jsonl eval/gemini_eval.jsonl 100
+
+# Windows PowerShell
+$env:GEMINI_API_KEY="..."
+./scripts/run_eval_gemini.ps1 -InputPath outputs/qwen3_out.jsonl -OutputPath eval/gemini_eval.jsonl -MaxRecords 100
+```
+
+### 出力
+- `eval/gemini_eval.jsonl`: 行ごとに `task_id`, `score(1-5)`, `reason`, `suggestion`, `prompt_version`, `model_name`
+- `eval/gemini_eval.summary.csv`: スコア分布の基本統計（参考）
+
+
+---
+
+## フロントエンド（TypeScript / React / Vite）
+
+- 起動（別ターミナルでバックエンド `uvicorn` を 8000 番で起動済み想定）
+
+```bash
+cd frontend
+npm install
+npm run dev
+# ブラウザで http://localhost:5173 を開く
+```
+
+- 環境変数: フロントは `VITE_API_BASE`（省略時 `http://localhost:8000`）に対応
+
+
