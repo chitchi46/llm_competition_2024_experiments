@@ -14,6 +14,7 @@ from transformers import (
     BitsAndBytesConfig,
 )
 import torch
+from peft import PeftModel
 
 from src.utils.jsonl_io import iter_jsonl, write_jsonl
 
@@ -50,7 +51,7 @@ def try_get_4bit_config() -> Optional[BitsAndBytesConfig]:
         return None
 
 
-def load_model_and_tokenizer(model_id: str):
+def load_model_and_tokenizer(model_id: str, adapter_id: Optional[str] = None, use_unsloth: bool = False):
     dtype_env = os.getenv("TORCH_DTYPE", "auto")
     device_map_env = os.getenv("DEVICE_MAP", "auto")
 
@@ -63,12 +64,31 @@ def load_model_and_tokenizer(model_id: str):
     quant_config = try_get_4bit_config()
 
     tokenizer = AutoTokenizer.from_pretrained(model_id, use_fast=True)
-    model = AutoModelForCausalLM.from_pretrained(
-        model_id,
-        device_map=device_map_env,
-        torch_dtype=dtype,
-        quantization_config=quant_config,
-    )
+
+    if use_unsloth:
+        try:
+            from unsloth import FastLanguageModel  # type: ignore
+            model, tokenizer = FastLanguageModel.from_pretrained(
+                model_name=model_id,
+                dtype=dtype,
+                load_in_4bit=True,
+                trust_remote_code=True,
+            )
+        except Exception as e:
+            raise RuntimeError(
+                "Unsloth の読み込みに失敗しました。requirements と環境を確認してください。"
+            ) from e
+    else:
+        model = AutoModelForCausalLM.from_pretrained(
+            model_id,
+            device_map=device_map_env,
+            torch_dtype=dtype,
+            quantization_config=quant_config,
+        )
+
+    if adapter_id:
+        hf_token = os.getenv("HF_TOKEN")
+        model = PeftModel.from_pretrained(model, adapter_id, token=hf_token)
     return model, tokenizer
 
 
@@ -110,8 +130,10 @@ def run_inference(
     model_id: str,
     input_jsonl: str,
     output_jsonl: str,
+    adapter_id: Optional[str] = None,
+    use_unsloth: bool = False,
 ) -> None:
-    model, tokenizer = load_model_and_tokenizer(model_id)
+    model, tokenizer = load_model_and_tokenizer(model_id, adapter_id, use_unsloth)
     gen_cfg = load_generation_config_from_env()
     ensure_parent_dir(output_jsonl)
 
@@ -138,13 +160,30 @@ def parse_args() -> argparse.Namespace:
         "--model-id", "-m", default=os.getenv("MODEL_ID", "google/gemma-2-9b-it"),
         help="Model repository id"
     )
+    parser.add_argument(
+        "--adapter-id",
+        default=os.getenv("ADAPTER_ID"),
+        help="Optional PEFT LoRA adapter repo id (e.g. user/repo).",
+    )
+    parser.add_argument(
+        "--use-unsloth",
+        action="store_true",
+        default=os.getenv("USE_UNSLOTH", "false").lower() in ("1", "true", "yes"),
+        help="Use unsloth.FastLanguageModel to load base model in 4bit.",
+    )
     return parser.parse_args()
 
 
 def main() -> None:
     load_dotenv()
     args = parse_args()
-    run_inference(args.model_id, args.input, args.output)
+    run_inference(
+        model_id=args.model_id,
+        input_jsonl=args.input,
+        output_jsonl=args.output,
+        adapter_id=args.adapter_id,
+        use_unsloth=args.use_unsloth,
+    )
 
 
 if __name__ == "__main__":
