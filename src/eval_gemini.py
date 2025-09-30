@@ -99,6 +99,24 @@ class NonRetryableError(Exception):
     pass
 
 
+def _normalize_gemini_text(text: str) -> str:
+    if not text:
+        return ""
+    s = text.strip()
+    if s.startswith("```") and s.endswith("```"):
+        s = s.strip("`").strip()
+        # 先頭行に言語名が付いている場合を除去
+        parts = s.split("\n", 1)
+        if len(parts) == 2 and parts[0] and not parts[0].lstrip().startswith("{"):
+            s = parts[1]
+    # JSON以外の前置き/後置きを粗く除去
+    first = s.find("{")
+    last = s.rfind("}")
+    if first != -1 and last != -1 and last > first:
+        s = s[first:last+1]
+    return s.strip()
+
+
 def _call_gemini(prompt: str, cfg: EvalConfig) -> Dict:
     if genai is None:
         raise RuntimeError("google-generativeai がインストールされていません")
@@ -111,23 +129,59 @@ def _call_gemini(prompt: str, cfg: EvalConfig) -> Dict:
     model = genai.GenerativeModel(cfg.model)
 
     response = model.generate_content(prompt)
-    text = response.text or ""
+    # ブロック理由を確認
+    if hasattr(response, 'prompt_feedback') and response.prompt_feedback:
+        import logging
+        logging.warning(f"[Gemini] prompt_feedback={response.prompt_feedback}")
+        if hasattr(response.prompt_feedback, 'block_reason') and response.prompt_feedback.block_reason:
+            raise ValueError(f"Gemini blocked prompt. Reason: {response.prompt_feedback.block_reason}")
+    raw_text = response.text if hasattr(response, 'text') else ""
+    text = _normalize_gemini_text(raw_text)
     # 期待形式: JSON のみ
     try:
+        if not text.strip():
+            # 空応答の場合はエラーログを出してリトライ対象にする
+            raise ValueError(f"Empty response from Gemini. Raw: {raw_text[:200]}")
         obj = json.loads(text)
         if not isinstance(obj, dict) or "score" not in obj:
-            raise ValueError("Invalid JSON shape")
+            raise ValueError(f"Invalid JSON shape (missing 'score'). Parsed: {obj}")
         return obj
     except Exception as e:
-        # モデルが余計なテキストを返した場合の再挑戦は上位リトライに任せる
+        # ログに詳細を残してリトライ
+        import logging
+        logging.error(f"[Gemini parse error] raw={raw_text[:300]} normalized={text[:300]} error={e}")
         raise e
+
+
+def verify_api_key(cfg: EvalConfig) -> tuple[bool, str]:
+    """API Key の有効性を簡易検証する。
+
+    - key未設定や認証エラーなどを検出
+    - モデルの `count_tokens` を用い、生成を行わず低コストで確認
+    """
+    if genai is None:
+        return False, "library_not_installed"
+    api_key = os.getenv("GEMINI_API_KEY")
+    if not api_key:
+        return False, "not_set"
+    try:
+        genai.configure(api_key=api_key)
+        model = genai.GenerativeModel(cfg.model)
+        # tokenカウントで軽量チェック
+        _ = model.count_tokens("ping")
+        return True, ""
+    except Exception as e:  # 認証/権限/レート等を包括
+        msg = str(e)
+        if len(msg) > 300:
+            msg = msg[:300]
+        return False, msg
 
 
 @retry(
     reraise=True,
     retry=retry_if_exception_type(Exception),
-    wait=wait_exponential(multiplier=1, min=1, max=30),
-    stop=stop_after_attempt(int(os.getenv("GEMINI_MAX_RETRIES", "5"))),
+    wait=wait_exponential(multiplier=1, min=1, max=10),
+    stop=stop_after_attempt(int(os.getenv("GEMINI_MAX_RETRIES", "3"))),
 )
 def call_gemini_with_retry(prompt: str, cfg: EvalConfig) -> Dict:
     return _call_gemini(prompt, cfg)

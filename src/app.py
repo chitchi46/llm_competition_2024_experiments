@@ -1,14 +1,20 @@
 from fastapi import FastAPI, Request, Form, UploadFile, File
 from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from pathlib import Path
+import logging
+from logging.handlers import RotatingFileHandler
+import uuid
+import subprocess
+import socket
 import os
 import json
 import time
 from dotenv import load_dotenv
 
 from src.infer import run_inference
-from src.eval_gemini import evaluate_jsonl, load_eval_config_from_env
+from src.eval_gemini import evaluate_jsonl, load_eval_config_from_env, NonRetryableError, verify_api_key
 from src.utils.jsonl_io import write_jsonl
 
 
@@ -20,6 +26,8 @@ app.add_middleware(
     allow_origins=[
         "http://localhost:5173",
         "http://127.0.0.1:5173",
+        "http://localhost:5174",
+        "http://127.0.0.1:5174",
     ],
     allow_credentials=True,
     allow_methods=["*"],
@@ -31,6 +39,86 @@ OUTPUTS_DIR = BASE_DIR / "outputs"
 OUTPUTS_DIR.mkdir(parents=True, exist_ok=True)
 UPLOADS_DIR = BASE_DIR / "uploads"
 UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
+LOGS_DIR = BASE_DIR / "logs"
+LOGS_DIR.mkdir(parents=True, exist_ok=True)
+FRONTEND_DIST_DIR = BASE_DIR / "frontend" / "dist"
+FRONTEND_DIR = BASE_DIR / "frontend"
+FRONTEND_PORT = int(os.getenv("FRONTEND_PORT", "5174"))
+
+# ---- Logging ----
+logger = logging.getLogger("llm_app")
+if not logger.handlers:
+    _handler = RotatingFileHandler(
+        LOGS_DIR / "app.log",
+        maxBytes=5 * 1024 * 1024,
+        backupCount=3,
+        encoding="utf-8",
+    )
+    _handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(name)s %(message)s"))
+    logger.addHandler(_handler)
+    logger.setLevel(logging.INFO)
+    logger.propagate = False
+
+# Serve built frontend if available (no need for Vite dev server)
+if FRONTEND_DIST_DIR.exists():
+    app.mount("/fe", StaticFiles(directory=str(FRONTEND_DIST_DIR), html=True), name="frontend")
+    @app.get("/fe")
+    async def fe_root():
+        return RedirectResponse(url="/fe/")
+
+
+def _is_port_open(host: str, port: int) -> bool:
+    try:
+        with socket.create_connection((host, port), timeout=0.5):
+            return True
+    except Exception:
+        return False
+
+
+def _start_vite_if_needed() -> None:
+    try:
+        if _is_port_open("127.0.0.1", FRONTEND_PORT):
+            logger.info(f"vite already listening on {FRONTEND_PORT}")
+            return
+        if not (FRONTEND_DIR / "package.json").exists():
+            logger.info("frontend directory not found; skip vite start")
+            return
+        cmd = (
+            f"cd '{FRONTEND_DIR}' && (pkill -f vite || true); "
+            f"npm ci --no-audit --no-fund && "
+            f"VITE_API_BASE=http://localhost:8000 nohup npm run dev -- --host 0.0.0.0 --port {FRONTEND_PORT} > ../vite.out 2>&1 &"
+        )
+        subprocess.Popen(["bash", "-lc", cmd], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        logger.info(f"vite starting on port {FRONTEND_PORT}")
+    except Exception as e:
+        logger.exception(f"failed to start vite: {e}")
+
+
+@app.on_event("startup")
+async def _on_startup():
+    # Auto start frontend dev server unless disabled
+    auto = os.getenv("AUTO_START_FRONTEND", "true").lower() in ("1", "true", "yes")
+    if auto:
+        _start_vite_if_needed()
+
+
+@app.get("/admin/start_frontend")
+async def admin_start_frontend():
+    _start_vite_if_needed()
+    return {"status": "starting", "port": FRONTEND_PORT}
+
+
+@app.api_route("/admin/restart_backend", methods=["GET", "POST"])
+async def admin_restart_backend():
+    try:
+        cmd = f"cd '{BASE_DIR}' && bash scripts/restart_backend.sh"
+        subprocess.Popen(["bash", "-lc", cmd], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        logger.info("admin requested backend restart")
+        return {"status": "restarting"}
+    except Exception as e:
+        error_id = uuid.uuid4().hex
+        logger.exception(f"[admin_restart_backend] error_id={error_id}: {e}")
+        return JSONResponse(status_code=500, content={"error": "internal_error"}, headers={"X-Error-Id": error_id})
 
 # Load .env for API keys (e.g., GEMINI_API_KEY)
 load_dotenv()
@@ -154,6 +242,34 @@ def render_ui(model_id_default: str, adapter_id_default: str):
   </div>
 
   <div class='card'>
+    <h3>Gemini API Key</h3>
+    <div class='row'>
+      <div>
+        <div class='muted'>現在の状態: <span id='geminiState'>チェック中...</span></div>
+      </div>
+    </div>
+    <form method='post' action='/api/gemini_key' onsubmit="setTimeout(()=>{{document.getElementById('geminiState').textContent='送信しました';}},0)">
+      <div class='row'>
+        <div>
+          <input type='password' name='api_key' placeholder='Paste API Key' style='width:360px' />
+        </div>
+        <div>
+          <button type='submit'>保存</button>
+        </div>
+      </div>
+    </form>
+  </div>
+
+  <div class='card'>
+    <h3>評価用ファイルのアップロード（.jsonl / .txt / .json）</h3>
+    <form method='post' action='/api/eval_upload' enctype='multipart/form-data' target='_blank'>
+      <input type='file' name='file' accept='.jsonl,.txt,.json' />
+      <button type='submit'>Geminiで採点</button>
+      <span class='muted'>結果JSONは新しいタブに表示されます。</span>
+    </form>
+  </div>
+
+  <div class='card'>
     <h3>出力一覧</h3>
     <table>
       <thead><tr><th>#</th><th>path</th><th>action</th></tr></thead>
@@ -201,8 +317,9 @@ async def run(
             use_unsloth=use_unsloth_flag,
         )
     except Exception as e:
-        # 失敗してもUIに戻す
-        print("[run] failed:", e)
+        # 失敗詳細はログにのみ出力し、UIには出さない
+        error_id = uuid.uuid4().hex
+        logger.exception(f"[run] failed error_id={error_id}: {e}")
     return RedirectResponse(url="/ui", status_code=303)
 
 
@@ -286,72 +403,50 @@ async def api_run(req: Request):
             use_unsloth=use_unsloth,
         )
     except Exception as e:
-        return JSONResponse(status_code=500, content={"error": str(e)})
+        error_id = uuid.uuid4().hex
+        logger.exception(f"[api_run] error_id={error_id}: {e}")
+        return JSONResponse(status_code=500, content={"error": "internal_error"}, headers={"X-Error-Id": error_id})
     return {"status": "started", "output": output_path}
 
 
 # ---- File upload + Gemini evaluation ----
 
 @app.post("/api/eval_upload")
-async def api_eval_upload(file: UploadFile = File(...), max_records: int = 50):
-    # Save upload
-    ts = int(time.time())
-    raw_name = f"{ts}_{file.filename}"
-    saved_path = UPLOADS_DIR / raw_name
-    with open(saved_path, "wb") as f:
-        f.write(await file.read())
-
-    # Normalize to JSONL (.jsonl / .txt / .json)
-    in_jsonl_path = saved_path
-    if saved_path.suffix.lower() in {".txt", ".log"}:
-        # Convert each non-empty line to {task_id, output}
-        jsonl_path = UPLOADS_DIR / f"{saved_path.stem}.jsonl"
-        count = 0
-        with open(saved_path, "r", encoding="utf-8", errors="ignore") as rf:
-            rows = []
-            for i, line in enumerate(rf):
-                text = line.strip()
-                if not text:
-                    continue
-                rows.append({"task_id": i + 1, "input": "", "output": text})
-                count += 1
-        write_jsonl(str(jsonl_path), rows)
-        in_jsonl_path = jsonl_path
-    elif saved_path.suffix.lower() == ".json":
-        # Accept array or object -> jsonl
-        jsonl_path = UPLOADS_DIR / f"{saved_path.stem}.jsonl"
-        try:
-            with open(saved_path, "r", encoding="utf-8") as rf:
-                data = json.load(rf)
-        except Exception as e:
-            return JSONResponse(status_code=400, content={"error": f"invalid json: {e}"})
-        rows: list[dict] = []
-        if isinstance(data, list):
-            for i, obj in enumerate(data):
-                if isinstance(obj, dict):
-                    rows.append(obj)
-                else:
-                    rows.append({"task_id": i + 1, "input": "", "output": str(obj)})
-        elif isinstance(data, dict):
-            rows.append(data)
-        else:
-            rows.append({"task_id": 1, "input": "", "output": str(data)})
-        write_jsonl(str(jsonl_path), rows)
-        in_jsonl_path = jsonl_path
-
-    # If the uploaded file is not .jsonl but looks like a single JSON value (array/object),
-    # convert it to JSONL. For true .jsonl は行区切りのため触らない。
+async def api_eval_upload(file: UploadFile = File(...), max_records: int = 3):
     try:
-        with open(in_jsonl_path, "r", encoding="utf-8", errors="ignore") as rf:
-            head = rf.read(2048).lstrip("\ufeff\n\r\t ")
-    except Exception:
-        head = ""
-    suffix = Path(in_jsonl_path).suffix.lower()
-    if suffix != ".jsonl" and (head.startswith("[") or head.startswith("{")):
-        try:
-            with open(in_jsonl_path, "r", encoding="utf-8", errors="ignore") as rf:
-                data = json.load(rf)
-            jsonl_path = (UPLOADS_DIR / f"{Path(in_jsonl_path).stem}.normalized.jsonl")
+        # Save upload
+        ts = int(time.time())
+        raw_name = f"{ts}_{file.filename}"
+        saved_path = UPLOADS_DIR / raw_name
+        with open(saved_path, "wb") as f:
+            f.write(await file.read())
+
+        # Normalize to JSONL (.jsonl / .txt / .json)
+        in_jsonl_path = saved_path
+        if saved_path.suffix.lower() in {".txt", ".log"}:
+            # Convert each non-empty line to {task_id, output}
+            jsonl_path = UPLOADS_DIR / f"{saved_path.stem}.jsonl"
+            count = 0
+            with open(saved_path, "r", encoding="utf-8", errors="ignore") as rf:
+                rows = []
+                for i, line in enumerate(rf):
+                    text = line.strip()
+                    if not text:
+                        continue
+                    rows.append({"task_id": i + 1, "input": "", "output": text})
+                    count += 1
+            write_jsonl(str(jsonl_path), rows)
+            in_jsonl_path = jsonl_path
+        elif saved_path.suffix.lower() == ".json":
+            # Accept array or object -> jsonl
+            jsonl_path = UPLOADS_DIR / f"{saved_path.stem}.jsonl"
+            try:
+                with open(saved_path, "r", encoding="utf-8") as rf:
+                    data = json.load(rf)
+            except Exception as e:
+                error_id = uuid.uuid4().hex
+                logger.exception(f"[api_eval_upload] invalid json error_id={error_id}: {e}")
+                return JSONResponse(status_code=400, content={"error": "invalid_json", "error_id": error_id})
             rows: list[dict] = []
             if isinstance(data, list):
                 for i, obj in enumerate(data):
@@ -365,43 +460,80 @@ async def api_eval_upload(file: UploadFile = File(...), max_records: int = 50):
                 rows.append({"task_id": 1, "input": "", "output": str(data)})
             write_jsonl(str(jsonl_path), rows)
             in_jsonl_path = jsonl_path
+
+        # If the uploaded file is not .jsonl but looks like a single JSON value (array/object),
+        # convert it to JSONL. For true .jsonl は行区切りのため触らない。
+        try:
+            with open(in_jsonl_path, "r", encoding="utf-8", errors="ignore") as rf:
+                head = rf.read(2048).lstrip("\ufeff\n\r\t ")
         except Exception:
-            # JSON としては読めなかった → JSONL として扱う
+            head = ""
+        suffix = Path(in_jsonl_path).suffix.lower()
+        if suffix != ".jsonl" and (head.startswith("[") or head.startswith("{")):
+            try:
+                with open(in_jsonl_path, "r", encoding="utf-8", errors="ignore") as rf:
+                    data = json.load(rf)
+                jsonl_path = (UPLOADS_DIR / f"{Path(in_jsonl_path).stem}.normalized.jsonl")
+                rows: list[dict] = []
+                if isinstance(data, list):
+                    for i, obj in enumerate(data):
+                        if isinstance(obj, dict):
+                            rows.append(obj)
+                        else:
+                            rows.append({"task_id": i + 1, "input": "", "output": str(obj)})
+                elif isinstance(data, dict):
+                    rows.append(data)
+                else:
+                    rows.append({"task_id": 1, "input": "", "output": str(data)})
+                write_jsonl(str(jsonl_path), rows)
+                in_jsonl_path = jsonl_path
+            except Exception:
+                # JSON としては読めなかった → JSONL として扱う
+                pass
+
+        # Run Gemini evaluation
+        out_path = OUTPUTS_DIR / f"gemini_eval_{ts}.jsonl"
+        try:
+            cfg = load_eval_config_from_env()
+            evaluate_jsonl(
+                input_jsonl=str(in_jsonl_path),
+                output_jsonl=str(out_path),
+                cfg=cfg,
+                max_records=max_records or None,
+            )
+        except NonRetryableError as e:
+            error_id = uuid.uuid4().hex
+            logger.exception(f"[api_eval_upload] non-retryable error_id={error_id}: {e}")
+            return JSONResponse(status_code=400, content={"error": "gemini_not_configured"}, headers={"X-Error-Id": error_id})
+        except Exception as e:
+            error_id = uuid.uuid4().hex
+            logger.exception(f"[api_eval_upload] evaluate_jsonl error_id={error_id}: {e}")
+            return JSONResponse(status_code=500, content={"error": "internal_error"}, headers={"X-Error-Id": error_id})
+
+        # Summarize result (avg score and count)
+        num = 0
+        total = 0.0
+        head: list[dict] = []
+        try:
+            with open(out_path, "r", encoding="utf-8") as rf:
+                for i, line in enumerate(rf):
+                    obj = json.loads(line)
+                    num += 1
+                    try:
+                        total += float(obj.get("score", 0))
+                    except Exception:
+                        pass
+                    if i < 5:
+                        head.append(obj)
+        except Exception:
             pass
 
-    # Run Gemini evaluation
-    out_path = OUTPUTS_DIR / f"gemini_eval_{ts}.jsonl"
-    try:
-        cfg = load_eval_config_from_env()
-        evaluate_jsonl(
-            input_jsonl=str(in_jsonl_path),
-            output_jsonl=str(out_path),
-            cfg=cfg,
-            max_records=max_records or None,
-        )
+        avg = (total / num) if num else 0.0
+        return {"status": "ok", "output": str(out_path.relative_to(BASE_DIR)), "count": num, "avg_score": avg, "head": head}
     except Exception as e:
-        return JSONResponse(status_code=500, content={"error": str(e)})
-
-    # Summarize result (avg score and count)
-    num = 0
-    total = 0.0
-    head: list[dict] = []
-    try:
-        with open(out_path, "r", encoding="utf-8") as rf:
-            for i, line in enumerate(rf):
-                obj = json.loads(line)
-                num += 1
-                try:
-                    total += float(obj.get("score", 0))
-                except Exception:
-                    pass
-                if i < 5:
-                    head.append(obj)
-    except Exception:
-        pass
-
-    avg = (total / num) if num else 0.0
-    return {"status": "ok", "output": str(out_path.relative_to(BASE_DIR)), "count": num, "avg_score": avg, "head": head}
+        error_id = uuid.uuid4().hex
+        logger.exception(f"[api_eval_upload] unexpected error_id={error_id}: {e}")
+        return JSONResponse(status_code=500, content={"error": "internal_error"}, headers={"X-Error-Id": error_id})
 
 
 # ---- Gemini status ----
@@ -412,19 +544,135 @@ async def gemini_status():
     configured = bool(key)
     masked = "\u25CF" * 5 if configured else ""
     model = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
-    return {"configured": configured, "masked": masked, "model": model}
+    # オプション: 即時検証（軽量）
+    ok, reason = verify_api_key(load_eval_config_from_env()) if configured else (False, "not_set")
+    return {"configured": configured, "valid": ok, "reason": (reason if not ok else ""), "masked": masked, "model": model}
 
 
 @app.post("/api/gemini_key")
 async def set_gemini_key(req: Request):
+    # Accept JSON, form, or raw text. Do not leak details to client.
+    api_key = None
     try:
         body = await req.json()
+        if isinstance(body, dict):
+            api_key = body.get("api_key")
     except Exception:
-        body = {}
-    api_key = (body or {}).get("api_key")
+        body = None
+    if not api_key:
+        try:
+            form = await req.form()
+            api_key = form.get("api_key") if form else None
+        except Exception:
+            pass
+    if not api_key:
+        try:
+            raw = await req.body()
+            text = (raw or b"").decode("utf-8", errors="ignore").strip()
+            # accept non-empty raw as key
+            if text:
+                api_key = text
+        except Exception:
+            pass
     if not api_key:
         return JSONResponse(status_code=400, content={"error": "api_key is required"})
-    # Set only in-process; not persisted to disk
-    os.environ["GEMINI_API_KEY"] = str(api_key)
-    return {"status": "ok", "masked": "\u25CF" * 5}
+    # 形式: 簡易バリデーション（1文字などの明らかな誤りをはじく）
+    api_key = str(api_key).strip()
+    if len(api_key) < 10:
+        return JSONResponse(status_code=400, content={"error": "invalid_api_key", "reason": "too_short"})
 
+    # 一時設定して有効性を検証
+    prev = os.environ.get("GEMINI_API_KEY")
+    os.environ["GEMINI_API_KEY"] = api_key
+    ok, reason = verify_api_key(load_eval_config_from_env())
+
+    # 永続化: プロジェクト直下の .env に保存/更新（有効/無効に関わらず保持して状態可視化を優先）
+    try:
+        env_path = BASE_DIR / ".env"
+        lines: list[str] = []
+        if env_path.exists():
+            with open(env_path, "r", encoding="utf-8", errors="ignore") as fp:
+                lines = fp.readlines()
+        updated = False
+        new_lines = []
+        for ln in lines:
+            if ln.strip().startswith("GEMINI_API_KEY="):
+                new_lines.append(f"GEMINI_API_KEY={api_key}\n")
+                updated = True
+            else:
+                new_lines.append(ln)
+        if not updated:
+            new_lines.append(f"GEMINI_API_KEY={api_key}\n")
+        with open(env_path, "w", encoding="utf-8") as fp:
+            fp.writelines(new_lines)
+    except Exception:
+        # 失敗してもプロセス内には保持する（ログには鍵は出さない）
+        pass
+
+    # 有効性結果をそのまま返す（無効でも200で反映し、ステータスは valid=false）
+    return {"status": "ok", "masked": "\u25CF" * 5, "valid": bool(ok), "reason": (reason or "")}
+
+
+# ---- Log utilities ----
+
+def _tail_lines(path: Path, n: int) -> list[str]:
+    try:
+        with open(path, "r", encoding="utf-8", errors="ignore") as fp:
+            lines = fp.readlines()
+        return [ln.rstrip("\n") for ln in lines[-max(0, n):]]
+    except Exception as e:
+        logger.exception(f"[logs_tail] failed to read {path}: {e}")
+        return [f"<read error: {e}>"]
+
+
+@app.get("/api/logs_tail")
+async def api_logs_tail(file: str = "app", n: int = 200):
+    files = {
+        "app": LOGS_DIR / "app.log",
+        "uvicorn": BASE_DIR / "uvicorn.out",
+        "vite": BASE_DIR / "vite.out",
+    }
+    key = (file or "app").lower()
+    path = files.get(key)
+    if not path:
+        return JSONResponse(status_code=400, content={"error": "invalid_file"})
+    if not path.exists():
+        return {"file": key, "path": str(path.relative_to(BASE_DIR)), "lines": []}
+    lines = _tail_lines(path, int(n or 200))
+    return {"file": key, "path": str(path.relative_to(BASE_DIR)), "lines": lines}
+
+
+@app.get("/api/error_lookup")
+async def api_error_lookup(error_id: str, file: str = "app", context: int = 3, max_hits: int = 20):
+    files = {
+        "app": LOGS_DIR / "app.log",
+        "uvicorn": BASE_DIR / "uvicorn.out",
+        "vite": BASE_DIR / "vite.out",
+    }
+    key = (file or "app").lower()
+    path = files.get(key)
+    if not error_id:
+        return JSONResponse(status_code=400, content={"error": "error_id_required"})
+    if not path or not path.exists():
+        return JSONResponse(status_code=404, content={"error": "log_not_found"})
+
+    try:
+        with open(path, "r", encoding="utf-8", errors="ignore") as fp:
+            lines = [ln.rstrip("\n") for ln in fp.readlines()]
+    except Exception as e:
+        logger.exception(f"[error_lookup] failed to read {path}: {e}")
+        return JSONResponse(status_code=500, content={"error": "read_failed"})
+
+    ctx = max(0, int(context))
+    hits: list[dict] = []
+    for idx, ln in enumerate(lines):
+        if error_id in ln:
+            start = max(0, idx - ctx)
+            end = min(len(lines), idx + ctx + 1)
+            hits.append({
+                "line": idx + 1,
+                "snippet": lines[start:end],
+            })
+            if len(hits) >= max(1, int(max_hits)):
+                break
+    return {"file": key, "path": str(path.relative_to(BASE_DIR)), "error_id": error_id, "hits": hits}

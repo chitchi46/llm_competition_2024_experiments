@@ -98,7 +98,7 @@
 - 仮想環境を作成して依存関係をインストール
 ```bash
 python -m venv .venv
-source .venv/bin/activate  # Windows: .venv\Scripts\activate
+source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
@@ -107,18 +107,14 @@ pip install -r requirements.txt
 cp env.example .env
 ```
 
-### 2) サンプル推論の実行
+### 2) サンプル推論の実行（Linux/WSL）
 ```bash
 bash scripts/run_infer.sh
-```
-Windows PowerShell の場合:
-```powershell
-./scripts/run_infer.ps1
 ```
 
 出力は `outputs/sample_outputs.jsonl` に保存されます。
 
-### 3) 任意のJSONLに対して実行
+### 3) 任意のJSONLに対して実行（Linux/WSL）
 ```bash
 python -m src.infer -i data/sample_inputs.jsonl -o outputs/out.jsonl -m google/gemma-2-9b-it
 ```
@@ -128,7 +124,7 @@ python -m src.infer -i data/sample_inputs.jsonl -o outputs/out.jsonl -m google/g
 
 ---
 
-## 評価（Gemini 2.5 Flash）
+## 評価（Gemini 2.5 Flash, Linux/WSL）
 
 ### 前提
 - `requirements.txt` をインストール済み
@@ -136,13 +132,8 @@ python -m src.infer -i data/sample_inputs.jsonl -o outputs/out.jsonl -m google/g
 
 ### 実行例
 ```bash
-# Linux/macOS
 export GEMINI_API_KEY=...  # 実キーを設定
 bash scripts/run_eval_gemini.sh outputs/qwen3_out.jsonl eval/gemini_eval.jsonl 100
-
-# Windows PowerShell
-$env:GEMINI_API_KEY="..."
-./scripts/run_eval_gemini.ps1 -InputPath outputs/qwen3_out.jsonl -OutputPath eval/gemini_eval.jsonl -MaxRecords 100
 ```
 
 ### 出力
@@ -160,9 +151,48 @@ $env:GEMINI_API_KEY="..."
 cd frontend
 npm install
 npm run dev
-# ブラウザで http://localhost:5173 を開く
+# ブラウザで http://localhost:5174 を開く
 ```
 
 - 環境変数: フロントは `VITE_API_BASE`（省略時 `http://localhost:8000`）に対応
+
+### WSL環境でのフロントエンド起動
+
+**問題**: WSL環境では、一部のツール（Cursor等）のターミナルがPowerShellとして実行される場合があります。
+
+**解決方法**:
+
+1. **一括起動スクリプトを使用（推奨）**:
+```bash
+wsl bash -c "cd /home/<ユーザー名>/llm_competition_2024_experiments && bash scripts/start_all.sh"
+```
+
+2. **フロントエンドのみを起動**:
+```bash
+wsl bash -c "cd /home/<ユーザー名>/llm_competition_2024_experiments/frontend && npm run dev -- --host 0.0.0.0 --port 5174"
+```
+（バックグラウンド実行させる場合は、ツールのバックグラウンドフラグを使用）
+
+3. **アクセス方法**:
+   - WSL内では: `http://localhost:5174/`
+   - **Windowsブラウザからは**: `http://<WSLのIPアドレス>:5174/`
+   
+   WSLのIPアドレスを確認:
+   ```bash
+   wsl bash -c "hostname -I"
+   ```
+   例: `172.23.244.170` → ブラウザで `http://172.23.244.170:5174/` にアクセス
+
+**トラブルシューティング**:
+- プロセス確認: `wsl bash -c "pgrep -af vite"`
+- ポート確認: `wsl bash -c "ss -tlnp | grep 5174"`
+- ログ確認: `vite.out` ファイルを参照
+
+
+---
+
+## 開発ドキュメント（Gemini 評価 開発）
+- 開発者向けの評価設計・運用・将来拡張（Convex連携）は分離ドキュメントに集約:
+  - `docs/dev/gemini-eval-dev.md`
 
 

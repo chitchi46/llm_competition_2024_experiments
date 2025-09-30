@@ -29,3 +29,21 @@ frontend/*.log
 .idea/
 .vscode/
 
+
+# Local logs and runs
+*.out
+logs/
+uvicorn.out
+vite.out
+
+# Build artifacts
+frontend/dist/
+frontend/tsconfig.tsbuildinfo
+
+# Python venv
+.venv/
+
+# Env files (never commit secrets)
+.env
+.env.*
+
