@@ -13,6 +13,15 @@
 
 ---
 
+## 合意済み評価要件（2025-10 更新）
+- 既定は「全件採点」。固定上限（例: 50 件）は設けない
+- 既定 QPS は 1.0。指数バックオフ付きリトライは現行方針を踏襲
+- 本番実行の前に「ドライラン（コスト/時間見積）」を必須化
+- 実行は非同期ラン（run_id 付与）で管理し、進捗取得・キャンセル・再開を可能にする
+- キャッシュは既定で有効（`task_id::output::prompt_version` をキーに再実行を抑制）
+
+---
+
 ## 構成要素
 - エントリポイント: `src/eval_gemini.py`
   - 引数: `--input`, `--output`, `--max-records`, `--cache`, `--model`, `--qps`, `--prompt-version`
@@ -87,6 +96,13 @@ python -m src.eval_gemini --input data/elyza-tasks-100-TV_0.jsonl \
 
 上記がすべて成功したら、UI経由（/api/eval_upload）でファイルを投げて同様の結果が得られることを確認してください。
 
+### ドライラン（必須・本番の前に実施）
+- 目的: 全件採点を行う前に、所要時間や概算コストを把握し、実行可否を判断する
+- 現状: 軽量動作確認は `verify_api_key` のみ提供。本機能は今後 API/UI に追加予定
+- 期待振る舞い（実装方針）:
+  - 入力件数・想定1件あたりトークン/レイテンシから総所要・概算費用を見積もり
+  - 結果を UI に提示し、ユーザ承認後に本番実行を開始
+
 ---
 
 ## CLI 実行
@@ -115,12 +131,41 @@ python -m src.eval_gemini --input outputs/qwen3_out.jsonl --output eval/gemini_e
   - 受理: `.jsonl / .json / .txt`
   - `.json` は配列/単一オブジェクトを JSONL に正規化
   - `.txt` は非空行ごとに 1 レコード化
-  - 既定では最大 50 件を評価（`max_records` で変更可能）
-- レスポンス: `{"status":"ok","output":"outputs/...jsonl","count":N,"avg_score":x.xx,"head":[...]}`
+  - 既定は「全件採点」。固定上限は設けない（運用上必要な場合のみ `max_records` を明示）
+  - 本番実行の前に「ドライラン」を必須化（UI から見積→承認→実行の順）
+ - レスポンス: `{"status":"ok","output":"outputs/...jsonl","count":N,"avg_score":x.xx,"head":[...]}`
 
 補助 API:
 - `GET /api/gemini_status`: 鍵の設定・有効性の軽量チェック
 - `POST /api/gemini_key`: 鍵の保存（`.env` を更新／失敗時はロールバック）
+
+---
+
+## 非同期ラン API（ドラフト）
+将来の拡張として、以下の API を追加し、全件採点と進捗可視化を標準化します。
+
+- `POST /api/eval_start`（複数ファイル対応）
+  - 入力: ファイル、`qps?`、`prompt_version?`、`cache?(on|off)`、`dry_run=true|false`
+  - 返り値: `{"run_id":"...","status":"started"}`（`dry_run=true` の場合は見積結果を返却）
+- `GET /api/eval_status?run_id=...`
+  - 返り値: `{"total":N,"done":n,"failed":m,"cached_hits":k,"elapsed":sec,"eta":sec,"avg_score":x.xx}`
+- `POST /api/eval_cancel?run_id=...`
+  - 実行中のランを安全に停止（進行中レコード完了後に停止）
+- 互換性: 既存 `POST /api/eval_upload` は内部で `eval_start` を呼ぶショートハンドとして存置
+
+---
+
+## UI 拡張（優先度）
+1. ラン開始パネル（高）
+   - 複数ファイル / QPS / プロンプト版 / キャッシュ / ドライラン→承認→実行
+2. 進捗ビュー（高）
+   - 進捗バー、件数、ETA、キャッシュ命中、キャンセル
+3. ラン履歴（高）
+   - 作成時刻/件数/平均/所要/状態、結果ダウンロード
+4. ラン詳細（中）
+   - スコア分布、上位/下位サンプル、失敗のみ再評価
+5. 比較（中）
+   - 2ラン比較（平均/分布/差分リスト）、CSV出力
 
 ---
 

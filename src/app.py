@@ -3,6 +3,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pathlib import Path
+from typing import Optional
 import logging
 from logging.handlers import RotatingFileHandler
 import uuid
@@ -16,6 +17,14 @@ from dotenv import load_dotenv
 from src.infer import run_inference
 from src.eval_gemini import evaluate_jsonl, load_eval_config_from_env, NonRetryableError, verify_api_key
 from src.utils.jsonl_io import write_jsonl
+from src.eval_runner import (
+    create_job,
+    start_job,
+    get_job_status,
+    cancel_job,
+    list_jobs,
+    dry_run_estimate,
+)
 
 
 app = FastAPI(title="LLM Experiments Dashboard")
@@ -413,32 +422,34 @@ async def api_run(req: Request):
 
 @app.post("/api/eval_upload")
 async def api_eval_upload(file: UploadFile = File(...), max_records: int = 3):
+    """互換性のため残置。内部的には新しいeval_startを使用（簡易版：ドライラン→即実行→完了待ち）"""
     try:
-        # Save upload
+        # 新しいAPI経由で実行（ドライラン→本番）
+        # まずドライラン
+        file_content = await file.read()
+        await file.seek(0)  # ファイルポインタをリセット
+        
+        # eval_start でドライラン
         ts = int(time.time())
         raw_name = f"{ts}_{file.filename}"
         saved_path = UPLOADS_DIR / raw_name
         with open(saved_path, "wb") as f:
-            f.write(await file.read())
+            f.write(file_content)
 
-        # Normalize to JSONL (.jsonl / .txt / .json)
+        # 正規化
         in_jsonl_path = saved_path
         if saved_path.suffix.lower() in {".txt", ".log"}:
-            # Convert each non-empty line to {task_id, output}
             jsonl_path = UPLOADS_DIR / f"{saved_path.stem}.jsonl"
-            count = 0
+            rows = []
             with open(saved_path, "r", encoding="utf-8", errors="ignore") as rf:
-                rows = []
                 for i, line in enumerate(rf):
                     text = line.strip()
                     if not text:
                         continue
                     rows.append({"task_id": i + 1, "input": "", "output": text})
-                    count += 1
             write_jsonl(str(jsonl_path), rows)
             in_jsonl_path = jsonl_path
         elif saved_path.suffix.lower() == ".json":
-            # Accept array or object -> jsonl
             jsonl_path = UPLOADS_DIR / f"{saved_path.stem}.jsonl"
             try:
                 with open(saved_path, "r", encoding="utf-8") as rf:
@@ -461,56 +472,42 @@ async def api_eval_upload(file: UploadFile = File(...), max_records: int = 3):
             write_jsonl(str(jsonl_path), rows)
             in_jsonl_path = jsonl_path
 
-        # If the uploaded file is not .jsonl but looks like a single JSON value (array/object),
-        # convert it to JSONL. For true .jsonl は行区切りのため触らない。
-        try:
-            with open(in_jsonl_path, "r", encoding="utf-8", errors="ignore") as rf:
-                head = rf.read(2048).lstrip("\ufeff\n\r\t ")
-        except Exception:
-            head = ""
-        suffix = Path(in_jsonl_path).suffix.lower()
-        if suffix != ".jsonl" and (head.startswith("[") or head.startswith("{")):
-            try:
-                with open(in_jsonl_path, "r", encoding="utf-8", errors="ignore") as rf:
-                    data = json.load(rf)
-                jsonl_path = (UPLOADS_DIR / f"{Path(in_jsonl_path).stem}.normalized.jsonl")
-                rows: list[dict] = []
-                if isinstance(data, list):
-                    for i, obj in enumerate(data):
-                        if isinstance(obj, dict):
-                            rows.append(obj)
-                        else:
-                            rows.append({"task_id": i + 1, "input": "", "output": str(obj)})
-                elif isinstance(data, dict):
-                    rows.append(data)
-                else:
-                    rows.append({"task_id": 1, "input": "", "output": str(data)})
-                write_jsonl(str(jsonl_path), rows)
-                in_jsonl_path = jsonl_path
-            except Exception:
-                # JSON としては読めなかった → JSONL として扱う
-                pass
+        # ドライラン見積（省略可能だが、ここでは従来動作に近づけるため実行）
+        cfg = load_eval_config_from_env()
+        estimate = dry_run_estimate(str(in_jsonl_path), cfg)
+        if estimate.get("error"):
+            logger.warning(f"[api_eval_upload] dry_run failed: {estimate['error']}")
 
-        # Run Gemini evaluation
-        out_path = OUTPUTS_DIR / f"gemini_eval_{ts}.jsonl"
-        try:
-            cfg = load_eval_config_from_env()
-            evaluate_jsonl(
-                input_jsonl=str(in_jsonl_path),
-                output_jsonl=str(out_path),
-                cfg=cfg,
-                max_records=max_records or None,
-            )
-        except NonRetryableError as e:
-            error_id = uuid.uuid4().hex
-            logger.exception(f"[api_eval_upload] non-retryable error_id={error_id}: {e}")
-            return JSONResponse(status_code=400, content={"error": "gemini_not_configured"}, headers={"X-Error-Id": error_id})
-        except Exception as e:
-            error_id = uuid.uuid4().hex
-            logger.exception(f"[api_eval_upload] evaluate_jsonl error_id={error_id}: {e}")
-            return JSONResponse(status_code=500, content={"error": "internal_error"}, headers={"X-Error-Id": error_id})
+        # ジョブ作成→開始（max_recordsは無視し、全件採点）
+        run_id = create_job(
+            input_path=str(in_jsonl_path),
+            qps=None,
+            prompt_version=None,
+            cache=None,
+        )
+        start_job(run_id)
 
-        # Summarize result (avg score and count)
+        # 完了を待つ（簡易的にポーリング、最大10分）
+        max_wait = 600  # 10分
+        start_time = time.time()
+        while time.time() - start_time < max_wait:
+            status = get_job_status(run_id)
+            if not status:
+                break
+            if status["status"] in ("completed", "failed", "cancelled"):
+                break
+            time.sleep(2)
+
+        # 結果を取得
+        status = get_job_status(run_id)
+        if not status:
+            return JSONResponse(status_code=500, content={"error": "job_not_found"})
+
+        if status["status"] == "failed":
+            return JSONResponse(status_code=500, content={"error": "evaluation_failed", "details": status.get("error")})
+
+        # 結果ファイルから要約を作成
+        out_path = Path(status["output_path"])
         num = 0
         total = 0.0
         head: list[dict] = []
@@ -676,3 +673,130 @@ async def api_error_lookup(error_id: str, file: str = "app", context: int = 3, m
             if len(hits) >= max(1, int(max_hits)):
                 break
     return {"file": key, "path": str(path.relative_to(BASE_DIR)), "error_id": error_id, "hits": hits}
+
+
+# ---- 非同期評価ラン API ----
+
+@app.post("/api/eval_start")
+async def api_eval_start(
+    file: UploadFile = File(...),
+    qps: Optional[float] = Form(None),
+    prompt_version: Optional[str] = Form(None),
+    cache: Optional[str] = Form(None),
+    dry_run: bool = Form(False),
+):
+    """評価ランを開始（ドライランまたは本番実行）"""
+    try:
+        # ファイル保存
+        ts = int(time.time())
+        raw_name = f"{ts}_{file.filename}"
+        saved_path = UPLOADS_DIR / raw_name
+        with open(saved_path, "wb") as f:
+            f.write(await file.read())
+
+        # 正規化（.txt/.jsonの場合）
+        in_jsonl_path = saved_path
+        if saved_path.suffix.lower() in {".txt", ".log"}:
+            jsonl_path = UPLOADS_DIR / f"{saved_path.stem}.jsonl"
+            rows = []
+            with open(saved_path, "r", encoding="utf-8", errors="ignore") as rf:
+                for i, line in enumerate(rf):
+                    text = line.strip()
+                    if not text:
+                        continue
+                    rows.append({"task_id": i + 1, "input": "", "output": text})
+            write_jsonl(str(jsonl_path), rows)
+            in_jsonl_path = jsonl_path
+        elif saved_path.suffix.lower() == ".json":
+            jsonl_path = UPLOADS_DIR / f"{saved_path.stem}.jsonl"
+            try:
+                with open(saved_path, "r", encoding="utf-8") as rf:
+                    data = json.load(rf)
+            except Exception as e:
+                error_id = uuid.uuid4().hex
+                logger.exception(f"[api_eval_start] invalid json error_id={error_id}: {e}")
+                return JSONResponse(status_code=400, content={"error": "invalid_json", "error_id": error_id})
+            rows: list[dict] = []
+            if isinstance(data, list):
+                for i, obj in enumerate(data):
+                    if isinstance(obj, dict):
+                        rows.append(obj)
+                    else:
+                        rows.append({"task_id": i + 1, "input": "", "output": str(obj)})
+            elif isinstance(data, dict):
+                rows.append(data)
+            else:
+                rows.append({"task_id": 1, "input": "", "output": str(data)})
+            write_jsonl(str(jsonl_path), rows)
+            in_jsonl_path = jsonl_path
+
+        # ドライラン
+        if dry_run:
+            cfg = load_eval_config_from_env()
+            if qps is not None:
+                cfg.qps = qps
+            if prompt_version is not None:
+                cfg.prompt_version = prompt_version
+            estimate = dry_run_estimate(str(in_jsonl_path), cfg)
+            return {"status": "dry_run", "estimate": estimate}
+
+        # 本番: ジョブ作成→開始
+        run_id = create_job(
+            input_path=str(in_jsonl_path),
+            qps=qps,
+            prompt_version=prompt_version,
+            cache=cache,
+        )
+        start_job(run_id)
+
+        return {"status": "started", "run_id": run_id}
+
+    except Exception as e:
+        error_id = uuid.uuid4().hex
+        logger.exception(f"[api_eval_start] error_id={error_id}: {e}")
+        return JSONResponse(status_code=500, content={"error": "internal_error"}, headers={"X-Error-Id": error_id})
+
+
+@app.get("/api/eval_status")
+async def api_eval_status(run_id: str):
+    """評価ランの進捗を取得"""
+    status = get_job_status(run_id)
+    if not status:
+        return JSONResponse(status_code=404, content={"error": "run_not_found"})
+    return status
+
+
+@app.post("/api/eval_cancel")
+async def api_eval_cancel(run_id: str = Form(...)):
+    """評価ランをキャンセル"""
+    success = cancel_job(run_id)
+    if not success:
+        return JSONResponse(status_code=400, content={"error": "cannot_cancel"})
+    return {"status": "cancelled", "run_id": run_id}
+
+
+@app.get("/api/eval_runs")
+async def api_eval_runs(limit: int = 50):
+    """評価ラン一覧を取得"""
+    runs = list_jobs(limit=limit)
+    return {"runs": runs}
+
+
+@app.get("/api/eval_result")
+async def api_eval_result(run_id: str, format: str = "jsonl"):
+    """評価結果をダウンロード"""
+    from fastapi.responses import FileResponse
+    
+    status = get_job_status(run_id)
+    if not status:
+        return JSONResponse(status_code=404, content={"error": "run_not_found"})
+    
+    if format == "csv":
+        path = Path(status.get("output_path", "")).with_suffix(".summary.csv")
+    else:
+        path = OUTPUTS_DIR / f"gemini_eval_{run_id}.jsonl"
+    
+    if not path.exists():
+        return JSONResponse(status_code=404, content={"error": "file_not_found"})
+    
+    return FileResponse(path, filename=path.name)
